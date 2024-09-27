@@ -207,7 +207,7 @@ def visualize_classifications(model, test_loader, inr_model, num_images=5, devic
 
     for row, images in enumerate([correct_images, incorrect_images]):
         for idx, (vec, pred, label) in enumerate(images):
-            img = vec_to_img(inr_model, vec.unsqueeze(0)).cpu().numpy()
+            img = vec_to_img(inr_model, vec).detach().cpu().numpy()
             axs[row, idx].imshow(img, cmap='gray')
             axs[row, idx].set_title(f"Pred: {pred.item()}, True: {label.item()}")
             axs[row, idx].axis('off')
