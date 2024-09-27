@@ -4,22 +4,6 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from classifier import evaluate_model
-
-
-def report_classification_accuracy(model, criterion, train_loader, val_loader, test_loader, device='cuda'):
-    """
-    Reports classification accuracy on training, validation, and test sets.
-    """
-    print("Evaluating Training Set...")
-    evaluate_model(model, train_loader, criterion, 'Training', device)
-    
-    print("Evaluating Validation Set...")
-    evaluate_model(model, val_loader, criterion, 'Validation', device)
-    
-    print("Evaluating Test Set...")
-    evaluate_model(model, test_loader, criterion, 'Test', device)
-
 
 def plot_confusion_matrix(model, loader, class_names, set_name, device='cuda'):
     """

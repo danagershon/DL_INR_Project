@@ -12,7 +12,7 @@ import argparse
 import torch.optim as optim
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from evaluation_questions import report_classification_accuracy, plot_confusion_matrix
+from evaluation_questions import plot_confusion_matrix
 
 
 class WeightSpaceClassifier(nn.Module):
@@ -243,6 +243,20 @@ def visualize_classifications(model, test_loader, inr_model, num_images=5, devic
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig(output_file)
     print(f"Classification results saved to {output_file}")
+
+
+def report_classification_accuracy(model, criterion, train_loader, val_loader, test_loader, device='cuda'):
+    """
+    Reports classification accuracy on training, validation, and test sets.
+    """
+    print("Evaluating Training Set...")
+    evaluate_model(model, train_loader, criterion, 'Training', device)
+    
+    print("Evaluating Validation Set...")
+    evaluate_model(model, val_loader, criterion, 'Validation', device)
+    
+    print("Evaluating Test Set...")
+    evaluate_model(model, test_loader, criterion, 'Test', device)
 
 
 if __name__ == '__main__':
