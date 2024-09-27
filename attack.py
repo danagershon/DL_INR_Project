@@ -18,8 +18,8 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps = 10, 
  
     
     
-    success = []
-    prog_bar = tqdm(loader, total=len(loader))
+    success = []  # TODO LEFT: what to put in this list? success of the model despite the attack? see piazza
+    prog_bar = tqdm.tqdm(loader, total=len(loader))
     for vectors, labels in prog_bar:
    
         vectors, labels = vectors.to(device), labels.to(device)
@@ -39,7 +39,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps = 10, 
         After the loop below is over you'd have all fully-optimized perturbations for the current batch of vectors.'''
         for step in range(num_pgd_steps): 
            
-            preds = model(images + perts) #feed currently perturbed data into the model
+            preds = model(vectors + perts) #feed currently perturbed data into the model
             loss = criterion(preds, labels) ''' TODO (3):  What's written in this line for the loss is almost correct. Change the code to MAXIMIZE the loss'''
             
             optimizer.zero_grad()
@@ -50,7 +50,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps = 10, 
             
             assert perts.abs().max().item() <= linf_bound #If this assert fails, you have a mistake in TODO(4) 
             perts = perts.detach().requires_grad() #Reset gradient tracking - we don't want to track gradients for norm projection.
-            
+            # TODO LEFT: need to change requires_grad to requires_grad_(True) ? see piazza
             
         ''' TODO (5): Accumulate predictions and labels to compute final accuracy for the attacked classifier.
         You can compute final predictions by taking the argmax over the softmax of predictions.'''
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     classifier.load_state_dict(torch.load(args.model_path)['state_dict'])
     
     
-    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]
+    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]  # TODO LEFT: consider sorting the bounds
     
     for bound in linf_bounds:
         pass #call the attack_classifier function for every bound
