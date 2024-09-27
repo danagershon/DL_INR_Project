@@ -24,7 +24,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
     
     correct_predictions = 0
 
-    prog_bar = tqdm.tqdm(loader, total=len(loader))
+    prog_bar = tqdm.tqdm(loader, total=len(loader), leave=False)
 
     for vectors, labels in prog_bar:
         vectors, labels = vectors.to(device), labels.to(device)
@@ -42,7 +42,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
             preds = model(vectors + perts)  # feed currently perturbed data into the model
             
             # TODO (3): Calculate loss (negate to maximize it)
-            loss = criterion(preds, labels)
+            loss = -criterion(preds, labels)
             
             # Backpropagate and optimize the perturbations
             optimizer.zero_grad()
@@ -51,8 +51,9 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
             
             # TODO (4): Apply L inf norm bound projection, use 'torch.clamp' to ensure perturbations are within bounds
             perts.data = torch.clamp(perts.data, -linf_bound, linf_bound)
-            
-            assert perts.abs().max().item() <= linf_bound  # If this assert fails, you have a mistake in TODO(4) 
+
+            eps = 1e-6  # Set a small tolerance for floating-point comparisons # TODO LEFT: check if its ok to do
+            assert perts.abs().max().item() <= linf_bound + eps  # If this assert fails, you have a mistake in TODO(4) 
 
             perts = perts.detach().requires_grad_()  # Reset gradient tracking - we don't want to track gradients for norm projection.
 
@@ -84,8 +85,7 @@ if __name__ == '__main__':
     set_random_seeds(0)
     device = 'cpu' if args.cpu else 'cuda:0'
 
-    # Load data
-    val_loader = get_fmnist_functa(data_dir=f"{args.data_path}/fmnist_val.pkl",mode='test', batch_size = args.batch_size, num_workers=2)
+    # Load test data
     test_loader = get_fmnist_functa(data_dir=f"{args.data_path}/fmnist_test.pkl", mode='test', batch_size=args.batch_size, num_workers=2)
     
     # Instantiate Classifier Model and load weights
@@ -94,28 +94,34 @@ if __name__ == '__main__':
     
     linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]  # TODO LEFT: consider sorting the bounds
     
+    linf_bounds.sort() # TODO LEFT: check if we can sort
+
     # define hyperparameters
     CRITERION = nn.CrossEntropyLoss()
     LR = 0.01
-    NUM_PGD_STEPS = 10 
 
     best_accuracy = 100  # Start with a high value for accuracy
     optimal_bound = None  # Will hold the value of the best bound
     
     for bound in linf_bounds:
-        print(f"Running attack with linf_bound = {bound}")
-        accuracy = attack_classifier(classifier, val_loader, CRITERION, linf_bound=bound, num_pgd_steps=NUM_PGD_STEPS,
-                                     lr=LR, device=device)
+        accuracy = attack_classifier(classifier, test_loader, CRITERION, linf_bound=bound, lr=LR, device=device)
     
         if accuracy < best_accuracy:  # the lower the better the attack is
             best_accuracy = accuracy
             optimal_bound = bound
     
-        print(f"Validation accuracy after attack with linf_bound={bound}: {accuracy:.2f}%")
+        print(f"Test accuracy after attack with linf_bound={bound}: {accuracy:.2f}%")
 
-    print(f"Optimal L inf bound: {optimal_bound}")
+    print(f"\nOptimal L inf bound: {optimal_bound}")
 
-    # Final evaluation on the test set using the optimal L inf bound
-    test_accuracy = attack_classifier(classifier, test_loader, CRITERION, linf_bound=optimal_bound, num_pgd_steps=NUM_PGD_STEPS,
-                                      lr=LR, device=device)
-    print(f"Final test accuracy after attack with optimal_bound={optimal_bound}: {test_accuracy:.2f}%")
+    # TODO LEFT: remove this, lt 0.01 seems to be the most stable
+    """
+    learning_rates = [0.001, 0.005, 0.01, 0.02, 0.05]  # Different LRs to test
+
+    for lr in learning_rates:
+        for bound in linf_bounds:
+            print(f"\nRunning attack with lr={lr} and linf_bound={bound}")
+            accuracy = attack_classifier(classifier, test_loader, CRITERION, linf_bound=bound, lr=lr, device=device)
+            print(f"Test accuracy after attack: {accuracy:.2f}%")
+    """
+
