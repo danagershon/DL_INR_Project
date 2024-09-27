@@ -57,7 +57,9 @@ def train_model(model,
                 num_epochs=20, 
                 learning_rate=0.001, 
                 criterion=nn.CrossEntropyLoss(), 
-                patience=5, 
+                patience=5,
+                weight_decay=5e-5,
+                lr_scheduler=True,
                 device='cuda'):
     """
     Train the WeightSpaceClassifier model with early stopping.
@@ -67,18 +69,24 @@ def train_model(model,
     :param val_loader: DataLoader for validation data.
     :param num_epochs: Number of epochs to train.
     :param learning_rate: Learning rate for the optimizer.
-    :param criterion: the loss function
+    :param criterion: the loss function.
     :param patience: Number of epochs to wait for improvement before stopping early.
+    :param weight_decay: L2 regularization weight for model weights (for optimizer).
+    :param lr_scheduler: add learning rate scheduler.
     :param device: Device to train on ('cuda' or 'cpu').
 
     :return: Trained model.
     """
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)  # weight_decay adds L2 regularization
+    
+    if lr_scheduler:
+        # Learning rate scheduler (reduces LR when validation accuracy plateaus)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=2, factor=0.5, verbose=True)
 
     # Initialize early stopping variables
-    best_val_loss = float('inf')
+    best_val_acc = float('-inf')
     best_model_weights = None
     patience_counter = 0
 
@@ -121,10 +129,14 @@ def train_model(model,
 
         # Evaluate on the validation set after each epoch
         val_loss, val_accuracy = evaluate_model(model, val_loader, criterion, 'Validation', device)
+        
+        if lr_scheduler:
+            # Step the learning rate scheduler based on validation accuracy
+            scheduler.step(val_accuracy)
 
         # Early stopping check: If validation loss improves, reset patience and save best model weights
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if val_accuracy > best_val_acc:
+            best_val_acc = val_accuracy
             best_model_weights = model.state_dict().copy()  # Save the current best model
             patience_counter = 0  # Reset the patience counter
         else:
@@ -266,18 +278,20 @@ if __name__ == '__main__':
     # --------- Implementation ---------
 
     # define hyperparameters
-    DROPOUT = 0.2
+    DROPOUT = 0.3
     BATCHNORM = True
-    NUM_EPOCHS = 20
+    NUM_EPOCHS = 50
     LR = 0.001
     CRITERION = nn.CrossEntropyLoss()
-    PATIENCE = 5
+    PATIENCE = 10
+    WEIGHT_DECAY = 5e-5
+    LR_SCHEDULER = True
 
     # initialize model
     model = WeightSpaceClassifier(use_batchnorm=BATCHNORM, dropout_prob=DROPOUT).to(device)
 
     # train model (validation set is evaluated at the end of each epoch)
-    train_model(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, PATIENCE, device=device)
+    train_model(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, PATIENCE, WEIGHT_DECAY, LR_SCHEDULER, device=device)
 
     # evaluate the model on the test set
     evaluate_model(model, test_functaloader, CRITERION, 'Test', device=device)
