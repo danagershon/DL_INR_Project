@@ -14,18 +14,6 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 
-"""
-# A basic linear classifier.
-class VanillaClassifier(nn.Module):
-    def __init__(self, in_features=512, num_classes=10):
-        super(VanillaClassifier, self).__init__()
-        self.net = nn.Linear(in_features, num_classes)
-
-    def forward(self, x):
-        return self.net(x)
-"""
-
-
 class WeightSpaceClassifier(nn.Module):
     """
     Our classifer implementation
@@ -63,11 +51,16 @@ class WeightSpaceClassifier(nn.Module):
         return self.net(x)
     
 
-def train_model(model, train_loader, val_loader, 
-                num_epochs=20, learning_rate=0.001, criterion=nn.CrossEntropyLoss(), 
+def train_model(model, 
+                train_loader, 
+                val_loader, 
+                num_epochs=20, 
+                learning_rate=0.001, 
+                criterion=nn.CrossEntropyLoss(), 
+                patience=5, 
                 device='cuda'):
     """
-    Train the WeightSpaceClassifier model.
+    Train the WeightSpaceClassifier model with early stopping.
 
     :param model: The classifier model.
     :param train_loader: DataLoader for training data.
@@ -75,13 +68,19 @@ def train_model(model, train_loader, val_loader,
     :param num_epochs: Number of epochs to train.
     :param learning_rate: Learning rate for the optimizer.
     :param criterion: the loss function
+    :param patience: Number of epochs to wait for improvement before stopping early.
     :param device: Device to train on ('cuda' or 'cpu').
 
     :return: Trained model.
     """
-    model = model.to(device)  # TODO LEFT: remove since this is done outside
+    model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Initialize early stopping variables
+    best_val_loss = float('inf')
+    best_model_weights = None
+    patience_counter = 0
 
     # Training loop
     for epoch in range(num_epochs):
@@ -105,16 +104,12 @@ def train_model(model, train_loader, val_loader,
             # Backward pass
             loss.backward()
 
-            # Update model params
+            # Update model parameters
             optimizer.step()
 
-            # Add batch loss to the epoch loss
-            epoch_loss += loss.item() * inputs.size(0)  # multiply by bach size becuse CE loss returns avg loss over the batch but we want to accumulate loss
-            
-            # Compute predictions for the batch
-            predicted = torch.argmax(outputs, 1)  # no need to apply softmax before max, becuase softmax doesnt change relative ranking
-            
-            # Add correct batch predicaiton to total correct epoch predictions
+            # Accumulate epoch loss and correct predictions
+            epoch_loss += loss.item() * inputs.size(0)  # multiply by batch size
+            predicted = torch.argmax(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
 
         # Calculate average loss and accuracy for the epoch
@@ -125,7 +120,26 @@ def train_model(model, train_loader, val_loader,
         print(f"Epoch [{epoch + 1}/{num_epochs}] - Avg Loss: {avg_epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%")
 
         # Evaluate on the validation set after each epoch
-        evaluate_model(model, val_loader, criterion, 'Validation', device)
+        val_loss, val_accuracy = evaluate_model(model, val_loader, criterion, 'Validation', device)
+
+        # Early stopping check: If validation loss improves, reset patience and save best model weights
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_weights = model.state_dict().copy()  # Save the current best model
+            patience_counter = 0  # Reset the patience counter
+        else:
+            patience_counter += 1
+            print(f"Patience counter: {patience_counter}/{patience}")
+
+        # Stop training if patience is exceeded
+        if patience_counter >= patience:
+            print(f"Early stopping triggered after {epoch + 1} epochs")
+            break
+
+    # Load the best model weights
+    if best_model_weights is not None:
+        model.load_state_dict(best_model_weights)
+        print("Restored best model weights.")
 
     return model
 
@@ -135,16 +149,18 @@ def evaluate_model(model, loader, criterion, type, device='cuda'):
     Evaluate the model (on the validation/test set).
 
     :param model: The classifier model.
-    :param val_loader: DataLoader for validation/test data.
+    :param loader: DataLoader for validation/test data.
     :param criterion: the loss function
-    :param type: 'Validatoin' or 'Test' (for printing purposes)
+    :param type: 'Validation' or 'Test' (for printing purposes)
     :param device: Device to evaluate on ('cuda' or 'cpu').
+
+    :return: validation/test loss and accuracy
     """
     model.eval()  # Set model to evaluation mode
     total_loss = 0.0
     correct_predictions = 0
 
-    # Use no_grad to disable gradient calculation during validation
+    # Use no_grad to disable gradient calculation during evaluation
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device), labels.to(device)
@@ -156,16 +172,18 @@ def evaluate_model(model, loader, criterion, type, device='cuda'):
             loss = criterion(outputs, labels)
 
             # Accumulate validation loss and correct predictions
-            total_loss += loss.item() * inputs.size(0)  # multiply by bach size becuse CE loss returns avg loss over the batch but we want to accumulate loss
-            predicted = torch.argmax(outputs, 1)  # no need to apply softmax before max, becuase softmax doesnt change relative ranking
+            total_loss += loss.item() * inputs.size(0)
+            predicted = torch.argmax(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
 
     # Calculate average validation loss and accuracy
     total_samples = len(loader.dataset)
-    total_loss = total_loss / total_samples
+    avg_loss = total_loss / total_samples
     accuracy = correct_predictions / total_samples * 100
 
-    print(f"{type} - Loss: {total_loss:.4f}, Accuracy: {accuracy:.2f}%")
+    print(f"{type} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
+    
+    return avg_loss, accuracy
 
 
 def visualize_classifications(model, test_loader, inr_model, num_images=5, device='cuda', output_file='classification_results.png'):
@@ -243,37 +261,29 @@ if __name__ == '__main__':
     inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth")['state_dict'])
     inr = inr.to(device)
     
-    """
-    #Example of extracting full image from modulation vector - must pass a single (non-batched) vector input - this is just an example, you can erase this when you submit
-    img = vec_to_img(inr, train_functaloader.dataset[0][0].to(device))
-    
-    # Instantiate Classifier Model
-    classifier = VanillaClassifier(in_features=512, num_classes=10).to(device)
-    
-    #inference example
-    predicted_scores = classifier(train_functaloader.dataset[0][0].to(device))
-    """
-    
     # TODO: Implement your training and evaluation loops here. We recommend you also save classifier weights for next parts
     
     # --------- Implementation ---------
-    
-    # initialize model
-    model = WeightSpaceClassifier().to(device)
 
     # define hyperparameters
+    DROPOUT = 0.2
+    BATCHNORM = True
     NUM_EPOCHS = 20
     LR = 0.001
     CRITERION = nn.CrossEntropyLoss()
+    PATIENCE = 5
+
+    # initialize model
+    model = WeightSpaceClassifier(use_batchnorm=BATCHNORM, dropout_prob=DROPOUT).to(device)
 
     # train model (validation set is evaluated at the end of each epoch)
-    train_model(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, device='cuda')
+    train_model(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, PATIENCE, device=device)
 
     # evaluate the model on the test set
-    evaluate_model(model, test_functaloader, CRITERION, 'Test', device='cuda')
+    evaluate_model(model, test_functaloader, CRITERION, 'Test', device=device)
 
     # visualize correct and incorrect classifications
-    visualize_classifications(model, test_functaloader, inr, num_images=5, device='cuda', output_file='classification_results.png')
+    visualize_classifications(model, test_functaloader, inr, num_images=5, device=device, output_file='classification_results.png')
 
     # save model
     torch.save({'state_dict': model.state_dict()}, 'classifier.pth')
