@@ -12,6 +12,7 @@ import argparse
 import torch.optim as optim
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from evaluation_questions import report_classification_accuracy, plot_confusion_matrix
 
 
 class WeightSpaceClassifier(nn.Module):
@@ -292,8 +293,16 @@ if __name__ == '__main__':
     # evaluate the model on the test set
     evaluate_model(model, test_functaloader, CRITERION, 'Test', device=device)
 
-    # visualize correct and incorrect classifications
-    visualize_classifications(model, test_functaloader, inr, num_images=5, device=device, output_file='classification_results.png')
+
+    # --------- generate results for evaluation questions ---------
+    
+    # Q1
+    report_classification_accuracy(model, CRITERION, train_functaloader, val_functaloader, test_functaloader, device)
+    
+    # Q2
+    class_names = [str(i) for i in range(10)]  # for Fashion MNIST classes
+    for loader, set_name in zip([train_functaloader, val_functaloader, test_functaloader], ['Train', 'Validation', 'Test']):
+        plot_confusion_matrix(model, loader, class_names, set_name)
 
     # save model
     torch.save({'state_dict': model.state_dict()}, 'classifier.pth')
