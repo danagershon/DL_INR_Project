@@ -23,7 +23,13 @@ def report_classification_accuracy(model, criterion, train_loader, val_loader, t
 
 def plot_confusion_matrix(model, loader, class_names, set_name, device='cuda'):
     """
-    Plots confusion matrix for given dataset.
+    Plots and saves confusion matrix for a given dataset.
+    
+    :param model: Trained model
+    :param loader: DataLoader for dataset
+    :param class_names: List of class names (e.g., ['0', '1', ..., '9'] for Fashion MNIST)
+    :param set_name: Name of the dataset (e.g., 'Train', 'Validation', 'Test') for the plot title
+    :param device: Device ('cuda' or 'cpu') to run inference
     """
     model.eval()
     true_labels = []
@@ -34,7 +40,7 @@ def plot_confusion_matrix(model, loader, class_names, set_name, device='cuda'):
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             predicted = torch.argmax(outputs, 1)
-            true_labels.extend(labels.detach().cpu().numpy())
+            true_labels.extend(labels.cpu().detach().numpy())
             predicted_labels.extend(predicted.detach().cpu().numpy())
     
     # Generate confusion matrix
@@ -46,4 +52,10 @@ def plot_confusion_matrix(model, loader, class_names, set_name, device='cuda'):
     plt.title(f'Confusion Matrix - {set_name} Set')
     plt.xlabel('Predicted Label')
     plt.ylabel('True Label')
-    plt.show()
+    
+    # Save the plot to a file
+    output_file = set_name + '_confusion_matrix.png'
+    plt.savefig(output_file)
+    plt.close()  # Close the figure to prevent it from displaying
+    
+    print(f"Confusion matrix for {set_name} set saved as {output_file}")
