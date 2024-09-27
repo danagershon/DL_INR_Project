@@ -125,7 +125,7 @@ def train_model(model, train_loader, val_loader,
         print(f"Epoch [{epoch + 1}/{num_epochs}] - Avg Loss: {avg_epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%")
 
         # Evaluate on the validation set after each epoch
-        evaluate_model(model, val_loader, 'Validation', device)
+        evaluate_model(model, val_loader, criterion, 'Validation', device)
 
     return model
 
