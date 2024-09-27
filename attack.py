@@ -4,56 +4,67 @@ from torch import nn, optim
 from utils import set_random_seeds, vec_to_img, get_fmnist_functa
 import numpy as np
 from SIREN import ModulatedSIREN
-from classifier import VanillaClassifier
+from classifier import WeightSpaceClassifier
 import argparse
 
 
-def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps = 10, device = "cuda"):
+def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr=0.01, device="cuda"):
     """
     :param model: your trained classifier model
     :param loader: data loader for input to be perturbed
     :param criterion: The loss criteria you wish to maximize in attack
+    :param linf_bound: L_inf norm bound for perturbations
+    :param num_pgd_steps: Number of PGD steps to apply perturbations
+    :param lr: learning rate for the perturbations
+    :param device: Device to use for computation (cuda or cpu)
+
+    :return: Classification accuracy after attack
     """
-    model.eval() #Model should be used in evaluation mode - we are not training any model weights.
- 
+    model.eval()  # Model should be used in evaluation mode - we are not training any model weights.
     
-    
-    success = []  # TODO LEFT: what to put in this list? success of the model despite the attack? see piazza
+    correct_predictions = 0
+
     prog_bar = tqdm.tqdm(loader, total=len(loader))
+
     for vectors, labels in prog_bar:
-   
         vectors, labels = vectors.to(device), labels.to(device)
         
-        perts = torch.zeros_like(vectors) #initialize the perturbation vectors for current iteration
+        # initialize the perturbation vectors for current batch
+        perts = torch.zeros_like(vectors, requires_grad=True)  # TODO (1): Allow gradient tracking        
         
-        ''' TODO (1): Your perts tensor currently will not be optimized since torch wasn't instructed to track gradients for it - make torch track its gradients. '''
+        optimizer = optim.Adam([perts], lr=lr)  # TODO (2): Optimizer for the perturbations, not the model
+        # TODO LEFT: might need to fine-tune the lr
         
-        
-        ''' TODO (2): Initialize your optimizer, you might need to finetune the learn-rate.
-        What should be the set of parameters the optimizer will be changing? Hint: NOT model.parameters()!
-        '''
-        optimizer = None
-        
-        
-        '''Every step here is one PGD iteration (meaning, one attack optimization step) optimizing your perturbations.
-        After the loop below is over you'd have all fully-optimized perturbations for the current batch of vectors.'''
+        # Every step here is one PGD iteration (meaning, one attack optimization step) optimizing your perturbations.
+        # After the loop below is over you'd have all fully-optimized perturbations for the current batch of vectors.
         for step in range(num_pgd_steps): 
-           
-            preds = model(vectors + perts) #feed currently perturbed data into the model
-            loss = criterion(preds, labels) ''' TODO (3):  What's written in this line for the loss is almost correct. Change the code to MAXIMIZE the loss'''
+
+            preds = model(vectors + perts)  # feed currently perturbed data into the model
             
+            # TODO (3): Calculate loss (negate to maximize it)
+            loss = criterion(preds, labels)
+            
+            # Backpropagate and optimize the perturbations
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
-            ''' TODO (4): Perform needed L_inf norm bound projection. The 'torch.clamp' function could be useful.'''
+            # TODO (4): Apply L inf norm bound projection, use 'torch.clamp' to ensure perturbations are within bounds
+            perts.data = torch.clamp(perts.data, -linf_bound, linf_bound)
             
-            assert perts.abs().max().item() <= linf_bound #If this assert fails, you have a mistake in TODO(4) 
-            perts = perts.detach().requires_grad() #Reset gradient tracking - we don't want to track gradients for norm projection.
-            # TODO LEFT: need to change requires_grad to requires_grad_(True) ? see piazza
-            
-        ''' TODO (5): Accumulate predictions and labels to compute final accuracy for the attacked classifier.
-        You can compute final predictions by taking the argmax over the softmax of predictions.'''
+            assert perts.abs().max().item() <= linf_bound  # If this assert fails, you have a mistake in TODO(4) 
+
+            perts = perts.detach().requires_grad_()  # Reset gradient tracking - we don't want to track gradients for norm projection.
+
+        # TODO (5): Final predictions for current batch after attack
+        final_preds = torch.argmax(model(vectors + perts), dim=1)  # TODO LEFT: need softmax before argmax?
+        correct_predictions += (final_preds == labels).sum().item()
+
+    # Return accuracy after attack
+    total_samples = len(loader.dataset)
+    accuracy = correct_predictions / total_samples * 100
+
+    return accuracy
         
         
 if __name__ == '__main__':
@@ -61,23 +72,50 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--data-path', type=str, default='/datasets/functaset',
                         help='The path to INR dataset (a.k.a functaset)')
     parser.add_argument('-b', '--batch-size', type=int, default=128,
-                        help='The path to INR dataset (a.k.a functaset)')
+                        help='batch size for the data loader')
     parser.add_argument('-c', '--cpu', action='store_true', help = "If set, use cpu and not cuda")
-    parser.add_argument('-m', '--model-path', type=str, help="Path to your pretrained classifier model weights")
+    parser.add_argument('-m', '--model-path', type=str, default='classifier.pth',
+                        help="Path to your pretrained classifier model weights")
+
     # add any other parameters you may need here
     args = parser.parse_args()
     
     # Set random seed.
     set_random_seeds(0)
     device = 'cpu' if args.cpu else 'cuda:0'
+
+    # Load data
+    val_loader = get_fmnist_functa(data_dir=f"{args.data_path}/fmnist_val.pkl",mode='test', batch_size = args.batch_size, num_workers=2)
+    test_loader = get_fmnist_functa(data_dir=f"{args.data_path}/fmnist_test.pkl", mode='test', batch_size=args.batch_size, num_workers=2)
     
-       
     # Instantiate Classifier Model and load weights
-    classifier = VanillaClassifier(in_features=512, num_classes=10).to(device)
+    classifier = WeightSpaceClassifier(in_features=512, num_classes=10).to(device)
     classifier.load_state_dict(torch.load(args.model_path)['state_dict'])
-    
     
     linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]  # TODO LEFT: consider sorting the bounds
     
+    # define hyperparameters
+    CRITERION = nn.CrossEntropyLoss()
+    LR = 0.01
+    NUM_PGD_STEPS = 10 
+
+    best_accuracy = 100  # Start with a high value for accuracy
+    optimal_bound = None  # Will hold the value of the best bound
+    
     for bound in linf_bounds:
-        pass #call the attack_classifier function for every bound
+        print(f"Running attack with linf_bound = {bound}")
+        accuracy = attack_classifier(classifier, val_loader, CRITERION, linf_bound=bound, num_pgd_steps=NUM_PGD_STEPS,
+                                     lr=LR, device=device)
+    
+        if accuracy < best_accuracy:  # the lower the better the attack is
+            best_accuracy = accuracy
+            optimal_bound = bound
+    
+        print(f"Validation accuracy after attack with linf_bound={bound}: {accuracy:.2f}%")
+
+    print(f"Optimal L inf bound: {optimal_bound}")
+
+    # Final evaluation on the test set using the optimal L inf bound
+    test_accuracy = attack_classifier(classifier, test_loader, CRITERION, linf_bound=optimal_bound, num_pgd_steps=NUM_PGD_STEPS,
+                                      lr=LR, device=device)
+    print(f"Final test accuracy after attack with optimal_bound={optimal_bound}: {test_accuracy:.2f}%")
