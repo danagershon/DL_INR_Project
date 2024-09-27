@@ -33,7 +33,6 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
         perts = torch.zeros_like(vectors, requires_grad=True)  # TODO (1): Allow gradient tracking        
         
         optimizer = optim.Adam([perts], lr=lr)  # TODO (2): Optimizer for the perturbations, not the model
-        # TODO LEFT: might need to fine-tune the lr
         
         # Every step here is one PGD iteration (meaning, one attack optimization step) optimizing your perturbations.
         # After the loop below is over you'd have all fully-optimized perturbations for the current batch of vectors.
@@ -98,7 +97,7 @@ if __name__ == '__main__':
 
     # define hyperparameters
     CRITERION = nn.CrossEntropyLoss()
-    LR = 0.01
+    LR = 0.05  # TODO LEFT: continue to fine-tune for maximux accuracy reduction?
 
     best_accuracy = 100  # Start with a high value for accuracy
     optimal_bound = None  # Will hold the value of the best bound
@@ -114,7 +113,7 @@ if __name__ == '__main__':
 
     print(f"\nOptimal L inf bound: {optimal_bound}")
 
-    # TODO LEFT: remove this, lt 0.01 seems to be the most stable
+    # TODO LEFT: remove this
     """
     learning_rates = [0.001, 0.005, 0.01, 0.02, 0.05]  # Different LRs to test
 
