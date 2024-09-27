@@ -28,21 +28,17 @@ class WeightSpaceClassifier(nn.Module):
 
         layers = [
             # First hidden layer
-            nn.Linear(in_features, 512),  
-            nn.BatchNorm1d(512) if use_batchnorm else nn.Identity(),
-            nn.ReLU(), 
-
-            # Second hidden layer
-            nn.Linear(512, 256),  
-            nn.ReLU(),  
-            nn.Dropout(dropout_prob) if dropout_prob > 0 else nn.Identity(),
-
-            # Third hidden layer
-            nn.Linear(256, 128),  
+            nn.Linear(in_features, 256),
+            nn.BatchNorm1d(256) if use_batchnorm else nn.Identity(),
             nn.ReLU(),
             nn.Dropout(dropout_prob) if dropout_prob > 0 else nn.Identity(),
 
-            nn.Linear(128, num_classes)  # Output layer (no activation because CrossEntropyLoss applies softmax internally)
+            # Second hidden layer
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout_prob) if dropout_prob > 0 else nn.Identity(),
+
+            nn.Linear(128, num_classes)
         ]
 
         self.net = nn.Sequential(*layers)
@@ -278,13 +274,13 @@ if __name__ == '__main__':
     # --------- Implementation ---------
 
     # define hyperparameters
-    DROPOUT = 0.3
+    DROPOUT = 0.3  # TODO LEFT: try 0.25 
     BATCHNORM = True
     NUM_EPOCHS = 50
-    LR = 0.001
-    CRITERION = nn.CrossEntropyLoss()
+    LR = 0.001  # TODO LEFT: try 0.0005 or 0.0001
+    CRITERION = nn.CrossEntropyLoss()  # TODO LEFT: try label_smoothing=0.1
     PATIENCE = 10
-    WEIGHT_DECAY = 5e-5
+    WEIGHT_DECAY = 5e-5  # TODO LEFT: try 1e-4 or 7e-5
     LR_SCHEDULER = True
 
     # initialize model
