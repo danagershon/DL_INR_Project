@@ -7,8 +7,11 @@ from SIREN import ModulatedSIREN
 from classifier import WeightSpaceClassifier
 import argparse
 
+import evaluation_questions  # TODO LEFT: remove after generating plots
 
-def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr=0.01, device="cuda"):
+
+def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr=0.01, device="cuda", 
+                      return_preds=False, return_perturbations=False):
     """
     :param model: your trained classifier model
     :param loader: data loader for input to be perturbed
@@ -17,12 +20,21 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
     :param num_pgd_steps: Number of PGD steps to apply perturbations
     :param lr: learning rate for the perturbations
     :param device: Device to use for computation (cuda or cpu)
+    :param return_preds: If True, return labels and predictions for confusion matrix generation
+    :param return_perturbations: If True, return perturbations for visualization
 
-    :return: Classification accuracy after attack
+    :return: Classification accuracy after attack, optionally predictions, true labels, and perturbations
     """
     model.eval()  # Model should be used in evaluation mode - we are not training any model weights.
     
     correct_predictions = 0
+
+    if return_preds:  # TODO LEFT: remove the logic for return_preds before submitting
+        true_labels = []
+        predicted_labels = []
+
+    if return_perturbations:  # TODO LEFT: remove the logic for return_perturbations before submitting
+        perturbations = []
 
     prog_bar = tqdm.tqdm(loader, total=len(loader), leave=False)
 
@@ -51,7 +63,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
             # TODO (4): Apply L inf norm bound projection, use 'torch.clamp' to ensure perturbations are within bounds
             perts.data = torch.clamp(perts.data, -linf_bound, linf_bound)
 
-            eps = 1e-6  # Set a small tolerance for floating-point comparisons # TODO LEFT: check if its ok to do
+            eps = 1e-6  # Set a small tolerance for floating-point comparisons # TODO LEFT: check if its ok to do so
             assert perts.abs().max().item() <= linf_bound + eps  # If this assert fails, you have a mistake in TODO(4) 
 
             perts = perts.detach().requires_grad_()  # Reset gradient tracking - we don't want to track gradients for norm projection.
@@ -60,11 +72,26 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
         final_preds = torch.argmax(model(vectors + perts), dim=1)  # TODO LEFT: need softmax before argmax?
         correct_predictions += (final_preds == labels).sum().item()
 
+        # Store predictions for confusion matrix
+        if return_preds:
+            true_labels.extend(labels.detach().cpu().numpy())
+            predicted_labels.extend(final_preds.detach().cpu().numpy())
+
+        if return_perturbations:
+            perturbations.extend((perts).detach().cpu().numpy())
+
     # Return accuracy after attack
     total_samples = len(loader.dataset)
     accuracy = correct_predictions / total_samples * 100
 
-    return accuracy
+    if return_preds and return_perturbations:
+        return accuracy, true_labels, predicted_labels, perturbations
+    elif return_preds:
+        return accuracy, true_labels, predicted_labels
+    elif return_perturbations:
+        return accuracy, perturbations
+    else:
+        return accuracy
         
         
 if __name__ == '__main__':
@@ -97,21 +124,14 @@ if __name__ == '__main__':
 
     # define hyperparameters
     CRITERION = nn.CrossEntropyLoss()
-    LR = 0.05  # TODO LEFT: continue to fine-tune for maximux accuracy reduction?
+    LR = 0.05  # TODO LEFT: continue to fine-tune for maximum accuracy reduction?
 
-    best_accuracy = 100  # Start with a high value for accuracy
-    optimal_bound = None  # Will hold the value of the best bound
+    accuracies = []
     
     for bound in linf_bounds:
         accuracy = attack_classifier(classifier, test_loader, CRITERION, linf_bound=bound, lr=LR, device=device)
-    
-        if accuracy < best_accuracy:  # the lower the better the attack is
-            best_accuracy = accuracy
-            optimal_bound = bound
-    
+        accuracies.append(accuracy)
         print(f"Test accuracy after attack with linf_bound={bound}: {accuracy:.2f}%")
-
-    print(f"\nOptimal L inf bound: {optimal_bound}")
 
     # TODO LEFT: remove this
     """
@@ -124,3 +144,31 @@ if __name__ == '__main__':
             print(f"Test accuracy after attack: {accuracy:.2f}%")
     """
 
+    # --------- Generate results for evaluation questions ---------
+
+    # Q6: Plot accuracies after attack
+    evaluation_questions.plot_accuracies_after_attack(linf_bounds, accuracies)
+
+    # Q7: Plot confusion matrix for adversarially attacked test set
+    bounds_with_acc_20_to_80 = [bound for bound, accuracy in zip(linf_bounds, accuracies) if 20 <= accuracy <= 80]
+    bound_for_q7 = min(bounds_with_acc_20_to_80)  # TODO LEFT: can choose another
+
+    accuracy, true_labels, predicted_labels, perturbations = attack_classifier(classifier, test_loader, CRITERION, 
+                                                                               linf_bound=bound_for_q7, lr=LR, 
+                                                                               device=device, return_preds=True, 
+                                                                               return_perturbations=True)
+    class_names = [str(i) for i in range(10)]  # for Fashion MNIST classes
+    evaluation_questions.plot_confusion_matrix(true_labels, predicted_labels, class_names, 
+                                               set_name=f'Adversarial Test (epsilon={bound_for_q7})')
+
+    # Q9: Visualize clean images, perturbations, and perturbed images for 3 classes (same bound as Q7)
+    selected_classes = [0, 1, 2]  # TODO LEFT: can select others
+    
+    # Load Full INR - for visualization purposes
+    inr = ModulatedSIREN(height=28, width=28, hidden_features=256, num_layers=10, modul_features=512)
+    inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth")['state_dict'])
+    inr = inr.to(device)
+    
+    evaluation_questions.visualize_class_attack_results(test_loader.dataset[:len(true_labels)][0], perturbations, 
+                                                        true_labels, predicted_labels, class_names, inr, 
+                                                        selected_classes, num_samples=1)
