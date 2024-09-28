@@ -111,7 +111,7 @@ def visualize_class_attack_results(clean_vectors, perturbations, labels, predict
                 if predictions[i] != labels[i] and success_count < num_samples:
                     # Clean image
                     axs[class_idx, 0].imshow(clean_img, cmap='gray')
-                    axs[class_idx, 0].set_title(f'{class_names[class_label]} Clean Image (Success)')
+                    axs[class_idx, 0].set_title('Clean Image (Success)')
                     
                     # Perturbation
                     axs[class_idx, 1].imshow(perturb_img, cmap='gray')
@@ -127,7 +127,7 @@ def visualize_class_attack_results(clean_vectors, perturbations, labels, predict
                 if predictions[i] == labels[i] and fail_count < num_samples:
                     # Clean image
                     axs[class_idx, 3].imshow(clean_img, cmap='gray')
-                    axs[class_idx, 3].set_title(f'{class_names[class_label]} Clean Image (Fail)')
+                    axs[class_idx, 3].set_title('Clean Image (Fail)')
                     
                     # Perturbation
                     axs[class_idx, 4].imshow(perturb_img, cmap='gray')
