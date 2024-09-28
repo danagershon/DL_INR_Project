@@ -169,6 +169,8 @@ if __name__ == '__main__':
     inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth")['state_dict'])
     inr = inr.to(device)
     
-    evaluation_questions.visualize_class_attack_results(test_loader.dataset[:len(true_labels)][0], perturbations, 
+    clean_vectors = [modul for modul, _ in test_loader.dataset]
+
+    evaluation_questions.visualize_class_attack_results(clean_vectors, perturbations, 
                                                         true_labels, predicted_labels, class_names, inr, 
                                                         selected_classes, num_samples=1)

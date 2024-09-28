@@ -103,20 +103,21 @@ def visualize_class_attack_results(clean_vectors, perturbations, labels, predict
                 perturbation = torch.tensor(perturbations[i]).to(device)
                 perturbed_vec = clean_vec + perturbation
                 
+                clean_img = vec_to_img(inr_model, clean_vec).detach().cpu().numpy()
+                perturb_img = vec_to_img(inr_model, perturbation).detach().cpu().numpy()
+                perturbed_img = vec_to_img(inr_model, perturbed_vec).detach().cpu().numpy()
+
                 # Successful attack: classifier predicted incorrectly after perturbation
                 if predictions[i] != labels[i] and success_count < num_samples:
                     # Clean image
-                    clean_img = vec_to_img(inr_model, clean_vec).detach().cpu().numpy()
                     axs[class_idx, 0].imshow(clean_img, cmap='gray')
                     axs[class_idx, 0].set_title(f'{class_names[class_label]} Clean Image (Success)')
                     
                     # Perturbation
-                    perturb_img = perturbation.detach().cpu().numpy()
                     axs[class_idx, 1].imshow(perturb_img, cmap='gray')
                     axs[class_idx, 1].set_title('Perturbation (Success)')
 
                     # Perturbed image
-                    perturbed_img = vec_to_img(inr_model, perturbed_vec).detach().cpu().numpy()
                     axs[class_idx, 2].imshow(perturbed_img, cmap='gray')
                     axs[class_idx, 2].set_title('Perturbed Image (Success)')
                     
@@ -125,17 +126,14 @@ def visualize_class_attack_results(clean_vectors, perturbations, labels, predict
                 # Failed attack: classifier predicted correctly after perturbation
                 if predictions[i] == labels[i] and fail_count < num_samples:
                     # Clean image
-                    clean_img = vec_to_img(inr_model, clean_vec).detach().cpu().numpy()
                     axs[class_idx, 3].imshow(clean_img, cmap='gray')
                     axs[class_idx, 3].set_title(f'{class_names[class_label]} Clean Image (Fail)')
                     
                     # Perturbation
-                    perturb_img = perturbation.detach().cpu().numpy()
                     axs[class_idx, 4].imshow(perturb_img, cmap='gray')
                     axs[class_idx, 4].set_title('Perturbation (Fail)')
 
                     # Perturbed image
-                    perturbed_img = vec_to_img(inr_model, perturbed_vec).detach().cpu().numpy()
                     axs[class_idx, 5].imshow(perturbed_img, cmap='gray')
                     axs[class_idx, 5].set_title('Perturbed Image (Fail)')
                     
