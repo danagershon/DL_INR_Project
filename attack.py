@@ -61,10 +61,9 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
             optimizer.step()
             
             # TODO (4): Apply L inf norm bound projection, use 'torch.clamp' to ensure perturbations are within bounds
-            perts.data = torch.clamp(perts.data, -linf_bound, linf_bound)
+            perts.data = torch.clamp(perts.data, -linf_bound + 1e-6, linf_bound - 1e-6)
 
-            eps = 1e-6  # Set a small tolerance for floating-point comparisons # TODO LEFT: check if its ok to do so
-            assert perts.abs().max().item() <= linf_bound + eps  # If this assert fails, you have a mistake in TODO(4) 
+            assert perts.abs().max().item() <= linf_bound  # If this assert fails, you have a mistake in TODO(4) 
 
             perts = perts.detach().requires_grad_()  # Reset gradient tracking - we don't want to track gradients for norm projection.
 
@@ -118,9 +117,9 @@ if __name__ == '__main__':
     classifier = WeightSpaceClassifier(in_features=512, num_classes=10).to(device)
     classifier.load_state_dict(torch.load(args.model_path)['state_dict'])
     
-    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]  # TODO LEFT: consider sorting the bounds
+    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)]
     
-    linf_bounds.sort() # TODO LEFT: check if we can sort
+    linf_bounds.sort()
 
     # define hyperparameters
     CRITERION = nn.CrossEntropyLoss()
