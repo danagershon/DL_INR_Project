@@ -240,3 +240,6 @@ if __name__ == '__main__':
 
     # evaluate the model on the test set
     evaluate_model(model, test_functaloader, CRITERION, 'Test', device=device)
+
+    # save model
+    torch.save({'state_dict': model.state_dict()}, 'classifier.pth')
