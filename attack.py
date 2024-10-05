@@ -61,7 +61,7 @@ def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr
             optimizer.step()
             
             # TODO (4): Apply L inf norm bound projection, use 'torch.clamp' to ensure perturbations are within bounds
-            perts.data = torch.clamp(perts.data, -linf_bound + 1e-6, linf_bound - 1e-6)
+            perts.data = torch.clamp(perts.data, -linf_bound + 1e-9, linf_bound - 1e-9)
 
             assert perts.abs().max().item() <= linf_bound  # If this assert fails, you have a mistake in TODO(4) 
 
