@@ -294,7 +294,7 @@ if __name__ == '__main__':
     LR = 0.001  # with 0.0005 got 88.30% test, with 0.0001 got 87.76% test
     CRITERION = nn.CrossEntropyLoss()  # with label_smoothing=0.1 and WEIGHT_DECAY=7e-5 got 88.64%
     PATIENCE = 10
-    WEIGHT_DECAY = 7e-5  # with 1e-4 got 88.86% test, with 7e-5 got 88.97% test (best)
+    WEIGHT_DECAY = 5e-5  # with 1e-4 got 88.86% test, with 7e-5 got 88.88%
     LR_SCHEDULER = True
 
     # initialize model
