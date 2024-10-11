@@ -279,8 +279,8 @@ if __name__ == '__main__':
     test_functaloader = get_fmnist_functa(data_dir=f"{args.data_path}/fmnist_test.pkl",mode='test', batch_size = args.batch_size, num_workers = 2)
     
     # Load Full INR - this is only for visualization purposes - this is just an example, you can erase this when you submit
-    inr = ModulatedSIREN(height=28, width=28, hidden_features=256, num_layers=10, modul_features=512)
-    inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth")['state_dict'])
+    inr = ModulatedSIREN(height=28, width=28, hidden_features=256, num_layers=10, modul_features=512, device=device)
+    inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth", map_location=device)['state_dict'])
     inr = inr.to(device)
     
     # TODO: Implement your training and evaluation loops here. We recommend you also save classifier weights for next parts
