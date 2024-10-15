@@ -141,8 +141,10 @@ def train_model(model,
             
             
             ## Bonus - Data Augmentation: Idea #2 - Train on Adversarial Data
-            if(epoch > 5): #Only after warm up
-            	inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-4)
+            if(epoch > 10): #Only after warm up
+            	inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-3)
+            
+            inputs += torch.normal(0, 1e-3, size=inputs.size())
             
             # Zero the gradients
             optimizer.zero_grad()
@@ -338,7 +340,7 @@ if __name__ == '__main__':
     # define hyperparameters
     DROPOUT = 0.3  # for 0.25 got 88.73% test
     BATCHNORM = True  # w/o got 85% test
-    NUM_EPOCHS = 10
+    NUM_EPOCHS = 15
     LR = 0.001  # with 0.0005 got 88.30% test, with 0.0001 got 87.76% test
     CRITERION = nn.CrossEntropyLoss()  # with label_smoothing=0.1 and WEIGHT_DECAY=7e-5 got 88.64%
     PATIENCE = 10
