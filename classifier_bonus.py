@@ -100,7 +100,7 @@ def train_model(model,
             
             ## Bonus - Data Augmentation: Idea #1 - random noise
             EPS = 1e-3 #noise, works pretty well
-            inputs += torch.normal(0, EPS, size=inputs.size())
+            inputs += torch.normal(0, EPS, size=inputs.size(), device=device)
             
             # Zero the gradients
             optimizer.zero_grad()
