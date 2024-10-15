@@ -141,10 +141,7 @@ def train_model(model,
             
             
             ## Bonus - Data Augmentation: Idea #2 - Train on Adversarial Data
-            if(epoch > 0): #Only after warm up
-            	inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=8e-4)
-            
-            #inputs += torch.normal(0, 1e-3, size=inputs.size(), device=device)
+            inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-4)
             
             # Zero the gradients
             optimizer.zero_grad()
