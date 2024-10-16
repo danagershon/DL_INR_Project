@@ -140,7 +140,7 @@ def train_model(model,
             inputs, labels = inputs.to(device), labels.to(device)
             
             
-            ## Bonus - Data Augmentation: Idea #2 - Train on Adversarial Data
+            ## Bonus - Train on Adversarial Data
             inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-4)
             
             # Zero the gradients
