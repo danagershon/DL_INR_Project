@@ -140,23 +140,6 @@ def train_model(model,
             inputs, labels = inputs.to(device), labels.to(device)
             
             
-            ## Original - Train on Original Data
-            
-            # Zero the gradients
-            optimizer.zero_grad()
-
-            # Forward pass
-            outputs = model(inputs)
-
-            # Calculate loss
-            loss = criterion(outputs, labels)
-
-            # Backward pass
-            loss.backward()
-
-            # Update model parameters
-            optimizer.step()
-
             ## Bonus - Train on Adversarial Data
             inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-4)
             
