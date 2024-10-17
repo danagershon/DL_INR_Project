@@ -117,7 +117,7 @@ if __name__ == '__main__':
     classifier = WeightSpaceClassifier(in_features=512, num_classes=10).to(device)
     classifier.load_state_dict(torch.load(args.model_path)['state_dict'])
     
-    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)] + [2e-4, 3e-4]
+    linf_bounds = [10**(-i) for i in range(3,7)] + [5*10**(-i) for i in range(3,7)] #+ [2e-4, 3e-4]
     
     linf_bounds.sort()
 
