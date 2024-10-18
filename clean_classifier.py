@@ -13,6 +13,15 @@ import torch.optim as optim
 from tqdm import tqdm
 
 
+"""
+Execution instructions:
+
+run classifier.py 
+
+(no arguments needed)
+"""
+
+
 class WeightSpaceClassifier(nn.Module):
     """
     Our classifer implementation

@@ -8,6 +8,17 @@ from classifier import WeightSpaceClassifier
 import argparse
 
 
+"""
+Execution instructions:
+
+For the original model: After executing classifier.py:
+attack.py --model-path classifier.pth
+
+For the adversarially trained model: After executing classifier_bunos_AT.py:
+attack.py --model-path classifier_AT.pth
+"""
+
+
 def attack_classifier(model, loader, criterion, linf_bound, num_pgd_steps=10, lr=0.01, device="cuda"):
     """
     :param model: your trained classifier model
