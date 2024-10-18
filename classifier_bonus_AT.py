@@ -11,43 +11,10 @@ from SIREN import ModulatedSIREN
 import argparse
 import torch.optim as optim
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from evaluation_questions import plot_confusion_matrix_for_model
+from classifier import WeightSpaceClassifier, evaluate_model, report_classification_accuracy
 
 
-class WeightSpaceClassifier(nn.Module):
-    """
-    Our classifer implementation
-    """
-    
-    def __init__(self, in_features=512, num_classes=10, use_batchnorm=True, dropout_prob=0.2):
-        """
-        :param in_features: input_dimension (size of modulation vector)
-        :param num_classes: number of classes (output dimension). 10 classes, for each type of clothing.
-        """
-        super(WeightSpaceClassifier, self).__init__()
-
-        layers = [
-            # First hidden layer
-            nn.Linear(in_features, 256),
-            nn.BatchNorm1d(256) if use_batchnorm else nn.Identity(),
-            nn.ReLU(),
-            nn.Dropout(dropout_prob) if dropout_prob > 0 else nn.Identity(),
-
-            # Second hidden layer
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(dropout_prob) if dropout_prob > 0 else nn.Identity(),
-
-            nn.Linear(128, num_classes)
-        ]
-
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.net(x)
-    
-def attack_classifier(model, inputs, labels, criterion, linf_bound, num_pgd_steps=10, lr=0.01, device="cuda"):
+def attack_classifier(model, inputs, labels, criterion, linf_bound, num_pgd_steps=10, lr=0.01):
     """
     :param model: your trained classifier model
     :param criterion: The loss criteria you wish to maximize in attack
@@ -85,23 +52,21 @@ def attack_classifier(model, inputs, labels, criterion, linf_bound, num_pgd_step
         
         perts = perts.detach().requires_grad_()  # Reset gradient tracking - we don't want to track gradients for norm projection.
 
-    #perts.extend((perts).detach().cpu().numpy())
-
-    return perts
+    return perts.detach()
 
 
-def train_model(model, 
-                train_loader, 
-                val_loader, 
-                num_epochs=20, 
-                learning_rate=0.001, 
-                criterion=nn.CrossEntropyLoss(), 
-                patience=5,
-                weight_decay=5e-5,
-                lr_scheduler=True,
-                device='cuda'):
+def train_model_AT(model, 
+                  train_loader, 
+                  val_loader, 
+                  num_epochs=20, 
+                  learning_rate=0.001, 
+                  criterion=nn.CrossEntropyLoss(), 
+                  patience=5,
+                  weight_decay=5e-5,
+                  lr_scheduler=True,
+                  device='cuda'):
     """
-    Train the WeightSpaceClassifier model with early stopping.
+    Adversarial training of the WeightSpaceClassifier model with early stopping.
 
     :param model: The classifier model.
     :param train_loader: DataLoader for training data.
@@ -132,60 +97,56 @@ def train_model(model,
     # Training loop
     for epoch in range(num_epochs):
         model.train()  # Set model to training mode
-        epoch_loss = 0.0
-        correct_predictions = 0
+        total_clean_loss = 0.0
+        total_adv_loss = 0.0
+        correct_predictions_clean = 0
+        correct_predictions_adv = 0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False):
             inputs, labels = batch
             inputs, labels = inputs.to(device), labels.to(device)
             
-            
-            ## Original - Train on Original Data
-            
-            # Zero the gradients
+            # ---- Training on original samples ----
             optimizer.zero_grad()
-
-            # Forward pass
-            outputs = model(inputs)
-
-            # Calculate loss
-            loss = criterion(outputs, labels)
-
-            # Backward pass
-            loss.backward()
-
-            # Update model parameters
+            outputs_clean = model(inputs)
+            clean_loss = criterion(outputs_clean, labels)
+            clean_loss.backward()
             optimizer.step()
 
-            ## Bonus - Train on Adversarial Data
-            inputs = inputs + attack_classifier(model, inputs, labels, nn.CrossEntropyLoss(), linf_bound=1e-4)
+            # Add clean loss to total loss
+            total_clean_loss += clean_loss.item() * inputs.size(0)  # multiply by batch size
+
+            # Calculate correct predictions for clean data
+            predicted_clean = torch.argmax(outputs_clean, 1)
+            correct_predictions_clean += (predicted_clean == labels).sum().item()
             
-            # Zero the gradients
+            # ---- Bonus: Training on adversarial samples ----
+            perturbations = attack_classifier(model, inputs, labels, criterion=nn.CrossEntropyLoss(), 
+                                              linf_bound=1e-4, lr=0.01, num_pgd_steps=10)
+            perturbed_inputs = inputs + perturbations
             optimizer.zero_grad()
-
-            # Forward pass
-            outputs = model(inputs)
-
-            # Calculate loss
-            loss = criterion(outputs, labels)
-
-            # Backward pass
-            loss.backward()
-
-            # Update model parameters
+            outputs_adv = model(perturbed_inputs)
+            adv_loss = criterion(outputs_adv, labels)
+            adv_loss.backward()
             optimizer.step()
 
-            # Accumulate epoch loss and correct predictions
-            epoch_loss += loss.item() * inputs.size(0)  # multiply by batch size
-            predicted = torch.argmax(outputs, 1)
-            correct_predictions += (predicted == labels).sum().item()
+            # Add adversarial loss to total loss
+            total_adv_loss += adv_loss.item() * inputs.size(0)  # multiply by batch size
 
-        # Calculate average loss and accuracy for the epoch
+            # Calculate correct predictions for adversarial data
+            predicted_adv = torch.argmax(outputs_adv, 1)
+            correct_predictions_adv += (predicted_adv == labels).sum().item()
+
+        # Calculate average loss and accuracy for both clean and adversarial data
         total_samples = len(train_loader.dataset)
-        avg_epoch_loss = epoch_loss / total_samples
-        epoch_accuracy = (correct_predictions / total_samples) * 100
+        avg_clean_loss = total_clean_loss / total_samples
+        avg_adv_loss = total_adv_loss / total_samples
+        avg_epoch_loss = (total_clean_loss + total_adv_loss) / (2 * total_samples)
+        epoch_accuracy_clean = (correct_predictions_clean / total_samples) * 100
+        epoch_accuracy_adv = (correct_predictions_adv / total_samples) * 100
 
-        print(f"Epoch [{epoch + 1}/{num_epochs}] - Avg Loss: {avg_epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%")
+        print(f"Epoch [{epoch + 1}/{num_epochs}] - Clean Loss: {avg_clean_loss:.4f}, Adv Loss: {avg_adv_loss:.4f}, Avg Loss: {avg_epoch_loss:.4f}")
+        print(f"Accuracy (Clean): {epoch_accuracy_clean:.2f}%, Accuracy (Adv): {epoch_accuracy_adv:.2f}%")
 
         # Evaluate on the validation set after each epoch
         val_loss, val_accuracy = evaluate_model(model, val_loader, criterion, 'Validation', device)
@@ -216,112 +177,6 @@ def train_model(model,
     return model
 
 
-
-def evaluate_model(model, loader, criterion, type, device='cuda'):
-    """
-    Evaluate the model (on the validation/test set).
-
-    :param model: The classifier model.
-    :param loader: DataLoader for validation/test data.
-    :param criterion: the loss function
-    :param type: 'Validation' or 'Test' (for printing purposes)
-    :param device: Device to evaluate on ('cuda' or 'cpu').
-
-    :return: validation/test loss and accuracy
-    """
-    model.eval()  # Set model to evaluation mode
-    total_loss = 0.0
-    correct_predictions = 0
-
-    # Use no_grad to disable gradient calculation during evaluation
-    with torch.no_grad():
-        for inputs, labels in loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-
-            # Forward pass
-            outputs = model(inputs)
-
-            # Compute batch loss
-            loss = criterion(outputs, labels)
-
-            # Accumulate validation loss and correct predictions
-            total_loss += loss.item() * inputs.size(0)
-            predicted = torch.argmax(outputs, 1)
-            correct_predictions += (predicted == labels).sum().item()
-
-    # Calculate average validation loss and accuracy
-    total_samples = len(loader.dataset)
-    avg_loss = total_loss / total_samples
-    accuracy = correct_predictions / total_samples * 100
-
-    print(f"{type} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
-    
-    return avg_loss, accuracy
-
-
-def visualize_classifications(model, test_loader, inr_model, num_images=5, device='cuda', output_file='classification_results.png'):
-    """
-    Visualize 'num_images' correctly classified and 'num_images' incorrectly classified images from the test set.
-
-    :param model: Trained classifier model.
-    :param test_loader: DataLoader for test data.
-    :param inr_model: Pre-trained ModulatedSIREN model to convert modulation vectors back to images.
-    :param num_images: Number of correctly and incorrectly classified images to visualize.
-    :param device: Device to run the evaluation ('cuda' or 'cpu').
-    :param output_file: File to save the visualization (default: 'classification_results.png').
-    """
-    model.eval()  # Set the classifier to evaluation mode
-    correct_images = []
-    incorrect_images = []
-
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            predicted = torch.argmax(outputs, 1)
-
-            # Iterate through each sample in the batch
-            for i in range(inputs.size(0)):
-                if predicted[i] == labels[i] and len(correct_images) < num_images:
-                    correct_images.append((inputs[i], predicted[i], labels[i]))
-                elif predicted[i] != labels[i] and len(incorrect_images) < num_images:
-                    incorrect_images.append((inputs[i], predicted[i], labels[i]))
-
-                # Stop once we have enough correct and incorrect examples
-                if len(correct_images) == num_images and len(incorrect_images) == num_images:
-                    break
-
-    # Plot the results
-    fig, axs = plt.subplots(2, num_images, figsize=(15, 6))
-    fig.suptitle('Correct and Incorrect Classifications')
-
-    for row, images in enumerate([correct_images, incorrect_images]):
-        for idx, (vec, pred, label) in enumerate(images):
-            img = vec_to_img(inr_model, vec).detach().cpu().numpy()
-            axs[row, idx].imshow(img, cmap='gray')
-            axs[row, idx].set_title(f"Pred: {pred.item()}, True: {label.item()}")
-            axs[row, idx].axis('off')
-
-    # Save the plot
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig(output_file)
-    print(f"Classification results saved to {output_file}")
-
-
-def report_classification_accuracy(model, criterion, train_loader, val_loader, test_loader, device='cuda'):
-    """
-    Reports classification accuracy on training, validation, and test sets.
-    """
-    print("Evaluating Training Set...")
-    evaluate_model(model, train_loader, criterion, 'Training', device)
-    
-    print("Evaluating Validation Set...")
-    evaluate_model(model, val_loader, criterion, 'Validation', device)
-    
-    print("Evaluating Test Set...")
-    evaluate_model(model, test_loader, criterion, 'Test', device)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a weight-space classifier')
     parser.add_argument('-p', '--data-path', type=str, default='/datasets/functaset',
@@ -346,40 +201,32 @@ if __name__ == '__main__':
     inr = ModulatedSIREN(height=28, width=28, hidden_features=256, num_layers=10, modul_features=512, device=device)
     inr.load_state_dict(torch.load(f"{args.data_path}/modSiren.pth", map_location=device)['state_dict'])
     inr = inr.to(device)
-    
-    # TODO: Implement your training and evaluation loops here. We recommend you also save classifier weights for next parts
-    
+        
     # --------- Implementation ---------
 
-    # define hyperparameters
-    DROPOUT = 0.3  # for 0.25 got 88.73% test
-    BATCHNORM = True  # w/o got 85% test
+    # define hyperparameters (same as the original classifier)
+    DROPOUT = 0.3
+    BATCHNORM = True 
     NUM_EPOCHS = 50
-    LR = 0.001  # with 0.0005 got 88.30% test, with 0.0001 got 87.76% test
-    CRITERION = nn.CrossEntropyLoss()  # with label_smoothing=0.1 and WEIGHT_DECAY=7e-5 got 88.64%
+    LR = 0.001
+    CRITERION = nn.CrossEntropyLoss()
     PATIENCE = 20
-    WEIGHT_DECAY = 5e-5  # with 1e-4 got 88.86% test, with 7e-5 got 88.88%
+    WEIGHT_DECAY = 5e-5
     LR_SCHEDULER = True
 
     # initialize model
     model = WeightSpaceClassifier(use_batchnorm=BATCHNORM, dropout_prob=DROPOUT).to(device)
 
     # train model (validation set is evaluated at the end of each epoch)
-    train_model(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, PATIENCE, WEIGHT_DECAY, LR_SCHEDULER, device=device)
+    train_model_AT(model, train_functaloader, val_functaloader, NUM_EPOCHS, LR, CRITERION, PATIENCE, WEIGHT_DECAY, LR_SCHEDULER, device=device)
 
     # evaluate the model on the test set
     evaluate_model(model, test_functaloader, CRITERION, 'Test', device=device)
-
 
     # --------- generate results for evaluation questions ---------
     
     # Q1: report classification accuracy for train, validation and test sets
     report_classification_accuracy(model, CRITERION, train_functaloader, val_functaloader, test_functaloader, device)
-    '''
-    # Q2: plot confusion matrix for the each of the train, validation and test sets (3 plots in total)
-    class_names = [str(i) for i in range(10)]  # for Fashion MNIST classes
-    for loader, set_name in zip([train_functaloader, val_functaloader, test_functaloader], ['Train', 'Validation', 'Test']):
-        plot_confusion_matrix_for_model(model, loader, class_names, set_name)
-    '''
+
     # save model
     torch.save({'state_dict': model.state_dict()}, 'classifier.pth')
